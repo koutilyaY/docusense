@@ -1,0 +1,27 @@
+SOFTWARE LICENSE AGREEMENT
+
+This Software License Agreement ("Agreement") is entered into as of January 1, 2021, between TechCorp Inc. ("Licensor") and Client Company 1 ("Licensee").
+
+1. GRANT OF LICENSE
+Licensor hereby grants Licensee a non-exclusive, non-transferable license to use the Software solely for Licensee's internal business purposes.
+
+2. TERM AND TERMINATION
+This Agreement shall commence on the Effective Date and continue for a period of two (2) years. Either party may terminate this Agreement upon thirty (30) days written notice.
+
+3. INDEMNIFICATION
+Licensee shall indemnify, defend, and hold harmless Licensor from any claims arising out of Licensee's use of the Software. This indemnification obligation shall survive termination of this Agreement.
+
+4. LIMITATION OF LIABILITY
+IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES. LICENSOR'S TOTAL LIABILITY SHALL NOT EXCEED THE FEES PAID IN THE PRECEDING THREE MONTHS.
+
+5. AUTO-RENEWAL
+This Agreement shall automatically renew for successive one-year terms unless either party provides sixty (60) days written notice of non-renewal prior to expiration.
+
+6. GOVERNING LAW
+This Agreement shall be governed by the laws of the State of Delaware.
+
+7. INTELLECTUAL PROPERTY
+All intellectual property rights in the Software remain exclusively with Licensor. Licensee acquires no ownership rights whatsoever.
+
+8. ARBITRATION
+Any dispute arising out of this Agreement shall be resolved by binding arbitration in accordance with the rules of the American Arbitration Association.
