@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-04-16T20:34:41.408531",
+  "num_questions": 20,
+  "corpus": "200 contracts (150 synthetic + 50 SEC EDGAR)",
+  "chunk_size": 512,
+  "chunk_overlap": 64,
+  "embedding_model": "nomic-embed-text",
+  "llm": "llama3.2",
+  "scores": {
+    "faithfulness": 0.684,
+    "answer_relevancy": 0.7304,
+    "context_precision": 0.9
+  }
+}
