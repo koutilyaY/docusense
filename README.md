@@ -1,391 +1,227 @@
-# DocuSense — Contract Intelligence Platform
+# DocuSense — Local-First Contract Intelligence
 
-> **Production-grade, multi-agent AI system that ingests legal contracts, extracts structured risk insights, and answers natural-language questions — grounded in cited source documents. Runs 100% locally with zero API cost.**
+> Privacy-preserving contract Q&A over legal documents. Ask natural-language questions, get **cited** answers grounded in the source contracts, plus automated **risk flags** on uploaded clauses. Runs **100% on your machine** — no API keys, no data leaving the laptop, zero per-query cost.
 
 ![Python](https://img.shields.io/badge/Python-3.11+-3776ab?style=flat-square&logo=python)
-![PySpark](https://img.shields.io/badge/PySpark-3.5-E25A1C?style=flat-square&logo=apache-spark)
 ![LangChain](https://img.shields.io/badge/LangChain-0.2-00D084?style=flat-square)
+![Ollama](https://img.shields.io/badge/Ollama-llama3.2%20%2B%20nomic--embed--text-000000?style=flat-square)
+![FAISS](https://img.shields.io/badge/FAISS-cpu-005BBB?style=flat-square)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009485?style=flat-square)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
 
 ---
 
-## 🎯 The Problem
+## TL;DR — Run it locally
 
-Legal and procurement teams manually review **thousands of contracts per year**. A single missed indemnification clause or auto-renewal trap can cost a company **millions**. Existing tools are:
-- ❌ Expensive ($500–$10K/month)
-- ❌ Cloud-dependent (data privacy nightmares)
-- ❌ Opaque (no visibility into how decisions are made)
-
----
-
-## ✨ The Solution
-
-DocuSense solves this with a **local-first, privacy-preserving AI pipeline** that turns dense contract PDFs into structured, queryable knowledge:
-
-✅ **Upload a contract** → AI scans every clause → returns `HIGH`/`MEDIUM`/`LOW` risk flags with rationale  
-✅ **Ask natural-language questions** → get cited answers with source documents in **<30 seconds**  
-✅ **Runs fully offline** → no data leaves your laptop, zero cloud dependencies  
-
-### Key Metrics
-
-| Metric | Value | Baseline |
-|--------|-------|----------|
-| **Extraction Accuracy** | 95.7% | 62% (rule-based) |
-| **RAG Faithfulness** | 0.87 | — |
-| **Answer Relevancy** | 0.83 | — |
-| **Retrieval Latency** | 180ms | — |
-| **Answer Generation** | 18s (Llama 3.2) | — |
-| **Cost Per Contract** | $0 | $5–$20 (API-based) |
-
----
-
-## 🏗️ Architecture
-Raw Contracts (PDF/DOCX/TXT)
-↓┌─────────────────────────────────────────┐ ✅
-│  Ingestion Layer (Layer 1)              │
-│  • Document Parser                      │
-│  • Text Extraction                      │
-│  • Metadata Collection                  │
-│  • PySpark Processing                   │
-└─────────────────────────────────────────┘
-↓ Delta Lake (ACID Storage)┌─────────────────────────────────────────┐ ✅
-│  Vector Layer (Layer 2)                 │
-│  • Semantic Chunking (512 tokens)       │
-│  • Embedding Generation (nomic)         │
-│  • FAISS Indexing (<10ms retrieval)     │
-│  • Vector Store Management              │
-└─────────────────────────────────────────┘
-↓ FAISS Index┌─────────────────────────────────────────┐ ✅
-│  AI/ML Layer (Layer 3)                  │
-│  • Risk Classification (8 categories)   │
-│  • RAG Chain (Llama 3.2)                │
-│  • Citation Grounding                   │
-│  • LangGraph Orchestration              │
-└─────────────────────────────────────────┘
-↓ Risk Assessment + Answers┌─────────────────────────────────────────┐ ✅
-│  API Layer (Layer 4)                    │
-│  • FastAPI REST Endpoints               │
-│  • /query (natural language questions)  │
-│  • /health (system status)              │
-│  • /docs (auto-generated docs)          │
-└─────────────────────────────────────────┘
-↓ REST API┌─────────────────────────────────────────┐ ✅
-│  Presentation Layer (Layer 5)           │
-│  • Streamlit Dashboard                  │
-│  • Contract Upload                      │
-│  • Risk Visualization                   │
-│  • Q&A Interface                        │
-└─────────────────────────────────────────┘
-↓User Results (Risk Flags + Cited Answers)
-### Tech Stack
-
-| Layer | Technology | Why |
-|-------|-----------|-----|
-| **Ingestion** | PySpark 3.5 + Delta Lake 3.2 | ACID transactions, schema evolution, time-travel auditing |
-| **Embeddings** | Ollama + nomic-embed-text | Local, zero cost, 274MB model size |
-| **Vector Store** | FAISS | Sub-10ms retrieval, zero latency penalty |
-| **LLM** | Ollama + Llama 3.2 | Privacy-first, locally hosted, no API costs |
-| **Orchestration** | LangChain 0.2 + LangGraph 0.1.5 | Multi-agent RAG pipeline, tool calling |
-| **API** | FastAPI 0.111 + Uvicorn | High-throughput REST, auto-generated docs |
-| **UI** | Streamlit 1.35 | Interactive contract dashboard, real-time risk flagging |
-| **Workflow** | Apache Airflow (optional) | Scheduled batch ingestion, DAG management |
-| **Experiment Tracking** | MLflow | Latency tracking, eval score monitoring |
-| **Containerization** | Docker + docker-compose | Reproducible, portable deployment |
-
----
-
-## 🚀 Quick Start (5 minutes)
-
-### Prerequisites
-- Mac (Apple Silicon or Intel) or Linux
-- Python 3.11+
-- Java 17 (for PySpark)
-- Ollama installed ([download here](https://ollama.ai))
-
-### 1️⃣ Clone & Setup
+DocuSense runs as three local processes: **Ollama** (model server), a **FastAPI** RAG backend, and a **Streamlit** UI. You need [Ollama](https://ollama.ai) installed and a prebuilt FAISS index at `data/faiss_index/` (already committed in this repo).
 
 ```bash
-git clone https://github.com/koutilyaY/docusense.git
-cd docusense
+# 0. One-time: pull the two local models (~2.3 GB total)
+ollama pull llama3.2          # LLM for answers + risk classification
+ollama pull nomic-embed-text  # embedding model for retrieval
+
+# 1. Python env + deps
 python -m venv venv
-source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2️⃣ Pull Local Models (one-time, ~3GB)
+Then open **three terminal tabs** from the repo root (all with `venv` activated):
 
 ```bash
-ollama pull nomic-embed-text   # 274MB embedding model
-ollama pull llama3.2           # 2GB LLM
-
-# Keep this running in a separate terminal
+# Tab 1 — model server
 ollama serve
-```
 
-### 3️⃣ Ingest Contracts & Build Vector Store
+# Tab 2 — RAG API  (http://localhost:8000, docs at /docs)
+uvicorn src.api.main:app --port 8000
 
-```bash
-# Generate sample contracts (optional)
-cd data/raw/contracts && python generate_contracts.py && cd ../../..
-
-# Run PySpark ingestion → Delta Lake
-python src/ingestion/pipeline.py
-
-# Chunk and embed → FAISS index (takes ~2 min for 150 contracts)
-python src/rag/chunker.py
-```
-
-### 4️⃣ Start API Server
-
-```bash
-uvicorn src.api.main:app --port 8000 --reload
-# API: http://localhost:8000
-# Docs: http://localhost:8000/docs
-```
-
-### 5️⃣ Start UI
-
-```bash
+# Tab 3 — UI  (http://localhost:8501)
 streamlit run src/ui/app.py
-# UI: http://localhost:8501
 ```
 
-Upload `tests/test_contract.txt` and start asking:
-- *"What is the termination clause?"*
-- *"What are the indemnification risks?"*
-- *"Does this have auto-renewal?"*
+Open <http://localhost:8501>. Use the **Ask the contracts** panel to query the indexed corpus, and the **Risk Scanner** panel to upload a `.txt` contract (try `tests/test_contract.txt`) and get clause-level risk flags.
+
+Config lives in `.env` (currently a single flag, `USE_LOCAL=true`).
+
+> **Rebuilding the index:** the FAISS index ships prebuilt. To regenerate it from your own contracts, run the ingestion + chunking scripts under `src/ingestion/` and `src/rag/` (see [Repo layout](#repo-layout)).
 
 ---
 
-## 📊 API Reference
+## The problem
 
-### POST `/query` — Ask Natural-Language Questions
+Legal, procurement, and compliance teams review large volumes of contracts, where a single missed indemnification clause, liability cap, or auto-renewal trap carries real cost. Commercial contract-AI tooling is typically SaaS, which means **sending privileged documents — NDAs, IP terms, financials — to a third-party cloud**. For sensitive material that is often a non-starter.
+
+DocuSense takes the opposite stance: **everything runs locally**. The LLM (`llama3.2`) and the embedding model (`nomic-embed-text`) are served by Ollama on your machine, retrieval is an on-disk FAISS index, and no document text ever crosses the network. That removes the privacy objection, the per-query API bill, and rate limits in one move.
+
+What you get:
+
+- **Cited Q&A.** Ask a question, retrieve the top-k relevant chunks, and the LLM answers *only* from that context — instructed to cite the source filename and to say "Not found in provided documents" rather than hallucinate.
+- **Risk flagging.** Upload a contract; each substantial clause is classified into one of 8 risk categories with a `low/medium/high` severity and a one-line rationale.
+
+---
+
+## Architecture
+
+```
+                          ┌──────────────────────────────────────┐
+  Raw contracts           │  INGESTION (offline, batch)          │
+  (.txt / EDGAR / CUAD) ─▶│  parser.py → pipeline.py (PySpark →   │
+                          │  Delta Lake)                         │
+                          └──────────────────┬───────────────────┘
+                                             │ clean documents
+                                             ▼
+                          ┌──────────────────────────────────────┐
+                          │  INDEXING (offline)                  │
+                          │  chunker.py: 512-tok chunks /         │
+                          │  64 overlap → nomic-embed-text →      │
+                          │  FAISS index  (data/faiss_index/)    │
+                          └──────────────────┬───────────────────┘
+                                             │
+            ┌────────────────────────────────┼────────────────────────────────┐
+            ▼ (query path)                    │                  ▼ (risk path)
+  ┌───────────────────────────┐               │     ┌──────────────────────────────┐
+  │ FastAPI  POST /query      │               │     │ Streamlit upload → risk_agent │
+  │ chain.py: FAISS retrieve  │               │     │ scan_document(): split clauses│
+  │ (k=5) → llama3.2          │               │     │ → classify_risk() per clause  │
+  │ RetrievalQA (cite-only    │               │     │ (llama3.2, JSON out)          │
+  │ prompt)                   │               │     └──────────────┬───────────────┘
+  └────────────┬──────────────┘               │                    │
+               │ answer + source filenames    │                    │ risk flags
+               ▼                               │                    ▼
+        ┌──────────────────────────────────────────────────────────────────┐
+        │  Streamlit UI — cited answers  +  HIGH/MEDIUM/LOW risk flags      │
+        └──────────────────────────────────────────────────────────────────┘
+```
+
+**Two independent inference paths**, both backed by the same local `llama3.2`:
+
+1. **RAG Q&A** — `src/api/main.py` exposes `POST /query`; `src/rag/chain.py` builds a LangChain `RetrievalQA` chain over the FAISS retriever (`k=5`) with a strict citation prompt and returns `{answer, sources}`.
+2. **Risk classification** — `src/agents/risk_agent.py` splits an uploaded document into clauses and classifies each via a JSON-constrained LLM prompt. The Streamlit UI calls it directly.
+
+> **On "agents":** DocuSense ships **one agent** — the risk classifier (`risk_agent.py`). It is a single-LLM, prompt-driven classifier called per clause; it is **not** a multi-agent graph and there is no LangGraph orchestration in the codebase today. (`langgraph` is listed as a dependency but is not currently wired into either path.) The README describes only what is actually in the flow.
+
+---
+
+## Tech stack
+
+| Concern | Choice | Why |
+|---|---|---|
+| LLM | **Ollama + llama3.2** | Local, private, free per query; powers both Q&A and risk classification |
+| Embeddings | **Ollama + nomic-embed-text** | Local embedding model (~274 MB); no embedding API calls |
+| Vector store | **FAISS (faiss-cpu)** | On-disk, fast in-process retrieval, no external service |
+| RAG orchestration | **LangChain 0.2** (`RetrievalQA`) | Retriever + cite-only prompt + source-document return |
+| API | **FastAPI 0.111 + Uvicorn** | `POST /query`, `GET /health`, auto OpenAPI docs at `/docs` |
+| UI | **Streamlit 1.35** | Two-panel app: contract Q&A and risk scanner |
+| Ingestion | **PySpark 3.5 + Delta Lake 3.2** | Batch parse/clean of the contract corpus into Delta tables |
+| Evaluation | **RAGAS 0.1.9** | Faithfulness / answer-relevancy / context-precision scoring |
+
+---
+
+## Privacy-first by design
+
+- **No network egress of document text.** Inference (LLM + embeddings) and retrieval are entirely local via Ollama and FAISS.
+- **No API keys, no cloud account, no per-query cost.** After the one-time model pull, it runs offline.
+- **Deterministic answers.** The LLM runs at `temperature=0` for reproducible, auditable output.
+- **Grounded, refusal-capable prompt.** The Q&A prompt forbids answering outside the retrieved context and returns "Not found in provided documents" when the corpus doesn't support an answer.
+
+---
+
+## Evaluation
+
+RAG quality is measured with [RAGAS](https://github.com/explodinggradients/ragas). The script is `notebooks/ragas_eval.py`; the most recent run is recorded in `notebooks/ragas_results.json`.
+
+> **Scope of these numbers (read this).** The figures below come from **one** RAGAS run over **20 hand-written Q&A pairs** against a **200-contract corpus (150 synthetic + 50 SEC EDGAR filings)** using `llama3.2` + `nomic-embed-text`, 512-token chunks / 64 overlap. They reflect a small, partly synthetic sample and a single local run — they are **not independently reproducible without re-running the eval on your own corpus and models**, and they are **not** a generalized accuracy guarantee. Treat them as a directional, self-reported benchmark.
+
+| RAGAS metric | Score | What it measures |
+|---|---|---|
+| Faithfulness | **0.68** | Are answer claims supported by the retrieved context? |
+| Answer relevancy | **0.73** | Does the answer address the question? |
+| Context precision | **0.90** | Is the retrieved context on-topic / well-ranked? |
+
+*(Source: `notebooks/ragas_results.json`, run dated 2026-04-16, 20 questions.)*
+
+> Earlier versions of this README cited higher RAG scores and a "95.7% extraction accuracy" headline. Those figures were **not reproducible from any committed artifact** and have been removed in favor of the actual logged RAGAS output above. Re-run `notebooks/ragas_eval.py` to regenerate these numbers for your setup.
+
+---
+
+## API reference
 
 ```bash
+# Ask a question (answers are grounded in the FAISS-indexed corpus)
 curl -X POST http://localhost:8000/query \
   -H "Content-Type: application/json" \
   -d '{"question": "What are the termination terms?"}'
 ```
 
-**Response:**
 ```json
 {
-  "answer": "Either party may terminate upon 30 days written notice, with 90 days for convenience. Source: Section 2.3, TERM AND TERMINATION",
-  "sources": [
-    "Software License Agreement 1",
-    "Software License Agreement 7"
-  ],
-  "retrieval_latency_ms": 182,
-  "generation_latency_ms": 18000
+  "answer": "Either party may terminate upon 30 days written notice ... (Source: <filename>)",
+  "sources": ["Software License Agreement 1", "Software License Agreement 7"]
 }
 ```
 
-### GET `/health`
-
 ```bash
-curl http://localhost:8000/health
-# {"status": "ok", "models_loaded": true}
+curl http://localhost:8000/health     # {"status": "ok"}
 ```
 
-### GET `/docs`
-
-Auto-generated OpenAPI docs at `http://localhost:8000/docs`
+Interactive OpenAPI docs: <http://localhost:8000/docs>.
 
 ---
 
-## 🎯 Risk Taxonomy (8 Clause Types)
+## Risk taxonomy
 
-The risk agent classifies clauses across **8 risk categories**:
+`risk_agent.py` classifies each clause into one of these 8 categories (or `other`), with a `low/medium/high` severity and a one-line rationale. The Streamlit scanner surfaces only `medium`/`high` flags.
 
-| Risk Type | Severity | Trigger Example |
-|-----------|----------|-----------------|
-| **Indemnification** | Medium–High | "indemnify, defend, and hold harmless" |
-| **Auto-Renewal** | Medium | "automatically renew unless 60 days notice" |
-| **Penalty Clause** | High | "liquidated damages of $500K per breach" |
-| **IP Ownership** | Medium–High | "all work product owned exclusively by client" |
-| **Arbitration** | Medium | "binding arbitration, waiving jury trial" |
-| **Limitation of Liability** | Medium | "liability capped at 3 months fees" |
-| **Termination for Convenience** | Low–Medium | "terminate for any reason upon 14 days" |
-| **Data Privacy** | Medium–High | "comply with GDPR and CCPA" |
+`indemnification` · `auto_renewal` · `penalty_clause` · `ip_ownership` · `arbitration` · `limitation_of_liability` · `termination_for_convenience` · `data_privacy`
 
 ---
 
-## 📈 Evaluation Results
+## Repo layout
 
-Benchmarked on **20 ground-truth Q&A pairs** using [RAGAS](https://github.com/explodinggradients/ragas):
-
-| Metric | Score | Threshold | Status |
-|--------|-------|-----------|--------|
-| **Faithfulness** | 0.87 | > 0.85 | ✅ |
-| **Answer Relevancy** | 0.83 | > 0.80 | ✅ |
-| **Context Precision** | 0.79 | > 0.75 | ✅ |
-
-**Retrieval Performance:**
-- Average latency: **180ms** (FAISS, local)
-- Answer generation: **18s** (Llama 3.2 on Apple M-series)
-- Chunks indexed: **450** (from 150 contracts)
-- Index size: **12MB** on disk
-
----
-
-## 🐳 Docker Deployment
-
-Deploy to any machine in **one command**:
-
-```bash
-docker-compose up --build
 ```
-
-- **API**: http://localhost:8000
-- **UI**: http://localhost:8501
-- **API Docs**: http://localhost:8000/docs
-
----
-
-## 📁 Project Structure
 docusense/
 ├── data/
-│   ├── raw/contracts/          # Source contracts (.txt, .pdf, .docx)
-│   ├── delta/documents/        # Delta Lake ACID tables
-│   └── faiss_index/            # Persisted vector store
-│
+│   ├── raw/contracts/          # source contracts (synthetic + EDGAR/CUAD)
+│   ├── delta/                  # Delta Lake tables from ingestion
+│   └── faiss_index/            # prebuilt vector index (index.faiss / index.pkl)
 ├── src/
 │   ├── ingestion/
-│   │   ├── parser.py           # Document parser (text extraction + metadata)
-│   │   └── pipeline.py         # PySpark → Delta Lake ETL pipeline
-│   │
+│   │   ├── parser.py           # text extraction + metadata
+│   │   ├── pipeline.py         # PySpark → Delta Lake ETL
+│   │   └── load_all.py         # corpus loader
 │   ├── rag/
-│   │   ├── chunker.py          # Semantic chunking + FAISS embedding
-│   │   └── chain.py            # RetrievalQA chain (citation enforcement)
-│   │
+│   │   ├── chunker.py          # chunk + embed (nomic) → FAISS; load_vectorstore()
+│   │   ├── chain.py            # RetrievalQA chain (k=5, cite-only prompt)
+│   │   └── rebuild_index.py    # rebuild the FAISS index
 │   ├── agents/
-│   │   ├── risk_agent.py       # Clause risk classifier (8 types)
-│   │   └── graph.py            # LangGraph multi-agent orchestration
-│   │
+│   │   └── risk_agent.py       # single risk-classification agent (8 categories)
 │   ├── api/
-│   │   └── main.py             # FastAPI /query and /health endpoints
-│   │
+│   │   └── main.py             # FastAPI: POST /query, GET /health
 │   └── ui/
-│       └── app.py              # Streamlit interactive dashboard
-│
+│       └── app.py              # Streamlit two-panel app (Q&A + risk scanner)
 ├── notebooks/
-│   └── ragas_eval.py           # RAG evaluation + RAGAS metrics
-│
-├── tests/
-│   └── test_contract.txt       # Sample contract for testing
-│
-├── Dockerfile
-├── docker-compose.yml
+│   ├── ragas_eval.py           # RAGAS evaluation script
+│   └── ragas_results.json      # logged eval output
+├── tests/test_contract.txt     # sample contract for the risk scanner
 ├── requirements.txt
-├── .gitignore
-├── LICENSE
 └── README.md
----
-
-## 🔬 Design Decisions & Trade-offs
-
-### Why Local LLMs (Ollama) over OpenAI?
-
-Legal documents contain **sensitive information** — NDAs, IP terms, financial data. Running Llama 3.2 locally means **zero data leaves the machine**. Additional benefits:
-- Zero API costs (one-time model download)
-- No rate limits
-- Fully deterministic for reproducible auditing
-
-### Why FAISS over Pinecone?
-
-For single-tenant, hundreds-of-contracts scale:
-- **FAISS**: sub-10ms retrieval, zero network latency, no monthly cost
-- **Pinecone**: overkill at this scale; becomes relevant at millions-of-vectors or multi-tenant SaaS tier
-
-### Why 512-Token Chunks with 64-Token Overlap?
-
-Benchmarked chunk sizes (256/512/1024 tokens):
-- **256**: too small → context loss, poor clause capture
-- **512**: sweet spot → captures full clause + surrounding context, stays within effective LLM attention window
-- **1024**: too large → overstuffed chunks, retrieval relevance drops
-
-64-token overlap prevents clause boundaries from splitting across chunks.
-
-### Why Delta Lake over Raw Parquet?
-
-Contracts are **updated and re-ingested frequently**:
-- ACID transactions (no partial writes)
-- Schema enforcement (catch schema drift)
-- Time-travel queries (audit "which version was analyzed on date X")
+```
 
 ---
 
-## 🗓️ Roadmap
+## Design notes
 
-- [ ] PDF and DOCX ingestion via [Unstructured.io](https://unstructured.io)
-- [ ] Contract version diffing (clause-level change detection)
-- [ ] RAGAS automated eval CI/CD pipeline
-- [ ] Pinecone integration (multi-tenant vector storage)
-- [ ] Apache Airflow DAG for scheduled ingestion
-- [ ] Contract summary report generation (PDF export)
-- [ ] Fine-tuned risk classifier on [CUAD dataset](https://www.atticuslabs.com/cuad/)
+- **Local LLM over a hosted API.** Privileged contract text never leaves the machine; the trade-off is local inference latency on `llama3.2` instead of a hosted frontier model.
+- **FAISS over a managed vector DB.** For a single-tenant, hundreds-of-contracts corpus, an in-process index is simpler and has no network hop or monthly cost.
+- **512-token chunks, 64 overlap.** Large enough to keep a clause intact with surrounding context; overlap avoids splitting clauses across chunk boundaries.
+- **Delta Lake for ingestion.** ACID writes and schema enforcement for a corpus that gets re-ingested as it changes.
 
 ---
 
-## 💡 What I Learned Building This
+## License
 
-### The Data Layer is Harder Than the LLM
+MIT — see [LICENSE](LICENSE).
 
-Most RAG projects stumble here, not in the LLM. Pain points:
-- PySpark + Delta Lake local integration (requires Java 17, correct `SPARK_HOME`)
-- Chunking strategy trade-offs (overlap size, boundary handling)
-- Citation grounding in prompt engineering (forcing LLM to quote sources)
+## Author
 
-### RAG Quality is 80% Retrieval, 20% LLM
-
-I benchmarked chunk sizes (256→512→1024 tokens) and tracked `precision@5` in `notebooks/ragas_eval.py`. **The #1 driver of answer quality is retrieval quality, not which LLM you use.**
-
-### Local Embeddings Work Surprisingly Well
-
-`nomic-embed-text` (274MB) rivals OpenAI's embeddings on semantic retrieval tasks, especially on domain-specific text like contracts. No fine-tuning needed for legal contracts.
-
----
-
-## 🤝 Contributing
-
-This project is built for demonstration and learning. Contributions welcome:
-
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/your-feature`)
-3. **Commit** changes with clear messages
-4. **Push** to your fork
-5. **Open** a pull request with description
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
-
----
-
-## 👤 About
-
-Built by **Koutilya Yenumula** — Data Engineer with 3+ years of experience:
-- 🏢 **Visa** (Oct 2024–Sep 2025) — stream processing, ELT pipelines
-- 🏢 **Cognizant** (Sep 2021–Aug 2024) — data warehousing, SQL optimization
-
-Currently completing **M.S. in Computer Science** at University of South Florida (graduating May 2026).
-
-**Certifications:**
-- AWS Certified Data Engineer – Associate (March 2026)
-
-**Links:**
-- 🔗 [GitHub](https://github.com/koutilyaY)
-- 🔗 [LinkedIn](https://www.linkedin.com/in/koutilya-yenumula)
-
----
-
-## 🙏 Acknowledgments
-
-- **RAGAS** — RAG evaluation framework
-- **LangChain** / **LangGraph** — agent orchestration
-- **Ollama** — local LLM hosting
-- **FAISS** — vector search
-- **PySpark** — distributed data processing
+Built by **Koutilya Yenumula** — [GitHub](https://github.com/koutilyaY) · [LinkedIn](https://www.linkedin.com/in/koutilya-yenumula)
