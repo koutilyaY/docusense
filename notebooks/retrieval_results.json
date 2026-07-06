@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-07-06T17:11:26.047847",
+  "dataset": "CUAD (Contract Understanding Atticus Dataset)",
+  "dataset_note": "real commercial contracts, expert-annotated clause spans",
+  "split": "test",
+  "contracts_scored": 30,
+  "clause_questions_scored": 282,
+  "embedding_model": "all-MiniLM-L6-v2",
+  "chunk_size": 512,
+  "chunk_overlap": 64,
+  "metric": "hit-rate@k (retriever recall of the gold clause span)",
+  "llm_involved": false,
+  "hit_rate_at_k": {
+    "1": 0.1879,
+    "3": 0.3085,
+    "5": 0.3723,
+    "10": 0.4574
+  }
+}

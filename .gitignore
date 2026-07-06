@@ -1,6 +1,13 @@
 .env
 venv/
+.venv/
 __pycache__/
 data/delta/
 *.pyc
 .DS_Store
+
+# Cached datasets and built indexes (regenerate with the download/build scripts)
+data/cuad/*.json
+data/cuad/*.zip
+data/faiss_index/
+data/raw/contracts/cuad_contracts.jsonl

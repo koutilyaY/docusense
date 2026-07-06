@@ -1,0 +1,9 @@
+# Minimal dependencies for the REAL retrieval evaluation on CUAD.
+# This eval needs NO LLM / Ollama / API key -- it is fully self-contained and
+# reproducible. Install these into a fresh venv and run:
+#   python data/cuad/download_cuad.py
+#   python src/eval/retrieval_eval.py
+faiss-cpu>=1.8.0
+sentence-transformers>=2.7.0
+numpy>=1.26.0
+langchain-text-splitters>=0.2.0
