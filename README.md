@@ -1,13 +1,13 @@
 # DocuSense — Local-First Contract Intelligence
 
-> Privacy-preserving contract Q&A over legal documents. Ask natural-language questions, get **cited** answers grounded in the source contracts, plus automated **risk flags** on uploaded clauses. Runs **100% on your machine** — no API keys, no data leaving the laptop, zero per-query cost.
+Privacy-preserving contract Q&A over legal documents. Ask a natural-language
+question, get a cited answer grounded in the source contracts, plus clause-level
+risk flags on an uploaded contract. Everything runs on your machine — no API
+keys, no document text leaving the laptop, no per-query cost.
 
-![Python](https://img.shields.io/badge/Python-3.11+-3776ab?style=flat-square&logo=python)
-![LangChain](https://img.shields.io/badge/LangChain-0.2-00D084?style=flat-square)
-![Ollama](https://img.shields.io/badge/Ollama-llama3.2%20%2B%20nomic--embed--text-000000?style=flat-square)
-![FAISS](https://img.shields.io/badge/FAISS-cpu-005BBB?style=flat-square)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.111-009485?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+The retriever is evaluated on **real contracts with real expert labels** (the
+CUAD dataset), and the reported number is the honest one, not a marketing
+figure. See [Evaluation](#evaluation).
 
 ---
 
@@ -128,19 +128,83 @@ What you get:
 
 ## Evaluation
 
-RAG quality is measured with [RAGAS](https://github.com/explodinggradients/ragas). The script is `notebooks/ragas_eval.py`; the most recent run is recorded in `notebooks/ragas_results.json`.
+### Primary: real retrieval evaluation on CUAD (no LLM involved)
 
-> **Scope of these numbers (read this).** The figures below come from **one** RAGAS run over **20 hand-written Q&A pairs** against a **200-contract corpus (150 synthetic + 50 SEC EDGAR filings)** using `llama3.2` + `nomic-embed-text`, 512-token chunks / 64 overlap. They reflect a small, partly synthetic sample and a single local run — they are **not independently reproducible without re-running the eval on your own corpus and models**, and they are **not** a generalized accuracy guarantee. Treat them as a directional, self-reported benchmark.
+The retrieval step decides whether the model ever sees the right clause, so that
+is what we measure directly — against real contracts and real expert labels,
+with no language model in the loop.
 
-| RAGAS metric | Score | What it measures |
+**Dataset.** [CUAD](https://www.atticusprojectai.org/cuad) — the Contract
+Understanding Atticus Dataset — is 510 real commercial contracts annotated by
+legal experts across 41 clause categories, released by The Atticus Project
+(Hendrycks et al., NeurIPS 2021). Each contract ships as a SQuAD-style record:
+the full contract text plus 41 clause questions, where an answerable question
+carries a gold answer span (the exact clause text and its character offset).
+
+**Method.** For a sample of real CUAD contracts we chunk each contract exactly
+as the RAG pipeline does (512 chars / 64 overlap), embed the chunks with
+`sentence-transformers/all-MiniLM-L6-v2` into a per-contract FAISS index, and
+for every answerable clause question check whether any of the top-k retrieved
+chunks actually contains the gold span. The metric is **hit-rate@k** — the
+retriever's recall of the correct clause. The script is
+`src/eval/retrieval_eval.py`; results are logged to
+`notebooks/retrieval_results.json`.
+
+**Result** (sample of 50 CUAD test contracts, 458 answerable clause questions,
+`all-MiniLM-L6-v2`, seed 42):
+
+| Metric | Score |
+|---|---|
+| hit-rate@1 | 0.17 |
+| hit-rate@3 | 0.31 |
+| hit-rate@5 | 0.37 |
+| hit-rate@10 | 0.46 |
+
+**Be blunt about this: the number is modest.** A general-purpose MiniLM
+embedding with exact-span matching and no legal-domain tuning surfaces the right
+clause in the top-5 about 37% of the time and in the top-10 about 46%. That is a
+real, reproducible floor — same model and seed give the same result on any
+machine, no Ollama or API key needed. It replaces the "95.7%" headline in
+earlier versions of this repo, which was not backed by any committed artifact.
+Obvious improvements (a legal-domain embedding, clause-aware chunking, hybrid
+BM25 + dense, a reranker) are future work, not claims.
+
+Reproduce it:
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-eval.txt
+python data/cuad/download_cuad.py           # ~18 MB, cached under data/cuad/
+python src/eval/retrieval_eval.py --contracts 50
+```
+
+### Secondary: RAGAS on the generation step (directional, LLM-based)
+
+`notebooks/ragas_eval.py` measures the *answering* side with
+[RAGAS](https://github.com/explodinggradients/ragas). It needs a running
+`llama3.2`, used a partly synthetic corpus, and is a single local run, so it is
+**not independently reproducible** and is kept only as a directional signal —
+not an accuracy guarantee.
+
+| RAGAS metric | Score | Caveat |
 |---|---|---|
-| Faithfulness | **0.68** | Are answer claims supported by the retrieved context? |
-| Answer relevancy | **0.73** | Does the answer address the question? |
-| Context precision | **0.90** | Is the retrieved context on-topic / well-ranked? |
+| Faithfulness | 0.68 | single local run |
+| Answer relevancy | 0.73 | 20 hand-written questions |
+| Context precision | 0.90 | partly synthetic corpus |
 
-*(Source: `notebooks/ragas_results.json`, run dated 2026-04-16, 20 questions.)*
+*(Source: `notebooks/ragas_results.json`, 2026-04-16, 20 questions.)*
 
-> Earlier versions of this README cited higher RAG scores and a "95.7% extraction accuracy" headline. Those figures were **not reproducible from any committed artifact** and have been removed in favor of the actual logged RAGAS output above. Re-run `notebooks/ragas_eval.py` to regenerate these numbers for your setup.
+### What is real vs synthetic
+
+- **Real:** the CUAD contracts, their expert gold clause spans, and the
+  retrieval hit-rate@k numbers above. Also real: the SEC EDGAR filings under
+  `data/raw/contracts/edgar/`.
+- **Synthetic:** the legacy `cuad_contracts.jsonl` demo corpus is 150
+  template-generated contracts (the "CUAD" name on that old file was a
+  misnomer). It is retained only to power the local demo RAG index and can be
+  swapped for real CUAD with `python src/eval/cuad_to_jsonl.py`.
+- **Directional / self-reported:** the RAGAS scores, because they depend on a
+  local LLM run.
 
 ---
 
@@ -181,29 +245,36 @@ Interactive OpenAPI docs: <http://localhost:8000/docs>.
 ```
 docusense/
 ├── data/
-│   ├── raw/contracts/          # source contracts (synthetic + EDGAR/CUAD)
-│   ├── delta/                  # Delta Lake tables from ingestion
-│   └── faiss_index/            # prebuilt vector index (index.faiss / index.pkl)
+│   ├── cuad/
+│   │   └── download_cuad.py     # fetch the REAL CUAD dataset (JSON cached here, gitignored)
+│   ├── raw/contracts/           # legacy demo corpus (synthetic templates + real EDGAR filings)
+│   ├── delta/                   # Delta Lake tables from ingestion
+│   └── faiss_index/             # demo vector index (index.faiss / index.pkl)
 ├── src/
+│   ├── eval/
+│   │   ├── retrieval_eval.py     # REAL hit-rate@k on CUAD gold spans (no LLM)
+│   │   └── cuad_to_jsonl.py      # convert real CUAD contracts into the RAG jsonl format
 │   ├── ingestion/
-│   │   ├── parser.py           # text extraction + metadata
-│   │   ├── pipeline.py         # PySpark → Delta Lake ETL
-│   │   └── load_all.py         # corpus loader
+│   │   ├── parser.py            # text extraction + metadata
+│   │   ├── pipeline.py          # PySpark → Delta Lake ETL
+│   │   └── load_all.py          # corpus loader
 │   ├── rag/
-│   │   ├── chunker.py          # chunk + embed (nomic) → FAISS; load_vectorstore()
-│   │   ├── chain.py            # RetrievalQA chain (k=5, cite-only prompt)
-│   │   └── rebuild_index.py    # rebuild the FAISS index
+│   │   ├── chunker.py           # chunk + embed (nomic) → FAISS; load_vectorstore()
+│   │   ├── chain.py             # RetrievalQA chain (k=5, cite-only prompt)
+│   │   └── rebuild_index.py     # rebuild the FAISS index
 │   ├── agents/
-│   │   └── risk_agent.py       # single risk-classification agent (8 categories)
+│   │   └── risk_agent.py        # single risk-classification agent (8 categories)
 │   ├── api/
 │   │   └── main.py             # FastAPI: POST /query, GET /health
 │   └── ui/
 │       └── app.py              # Streamlit two-panel app (Q&A + risk scanner)
 ├── notebooks/
-│   ├── ragas_eval.py           # RAGAS evaluation script
-│   └── ragas_results.json      # logged eval output
-├── tests/test_contract.txt     # sample contract for the risk scanner
-├── requirements.txt
+│   ├── ragas_eval.py            # RAGAS generation eval (LLM-based, directional)
+│   ├── ragas_results.json       # logged RAGAS output
+│   └── retrieval_results.json   # logged REAL CUAD retrieval hit-rate@k
+├── requirements.txt             # full app deps
+├── requirements-eval.txt        # minimal deps for the CUAD retrieval eval (no LLM)
+├── BENCHMARKS.md                # real vs directional numbers, spelled out
 └── README.md
 ```
 

@@ -59,33 +59,19 @@ This document details the system architecture, data flow, component interactions
 
 ---
 
-## Deployment Architecture
+## Deployment
 
-### Docker Compose Setup
-
-```yaml
-version: '3'
-services:
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-  api:
-    build: .
-    ports:
-      - "8000:8000"
-  ui:
-    build: ./ui
-    ports:
-      - "8501:8501"
-```
+DocuSense runs as three local processes — `ollama serve`, the FastAPI backend,
+and the Streamlit UI — started by hand from the repo root. There is no container
+image; the project is deliberately local-first and single-machine. See
+`HOW_TO_RUN.md` for the exact commands.
 
 ---
 
 ## Future Improvements
 
-- [ ] Contract version diffing
+- [ ] Improve retrieval recall on CUAD: legal-domain embedding model, clause-aware chunking, hybrid BM25 + dense retrieval, reranking
+- [ ] End-to-end answer eval against CUAD gold spans once retrieval is stronger
 - [ ] PDF/DOCX ingestion
 - [ ] Fine-tuned risk classifier
 - [ ] Multi-document comparison
-- [ ] Pinecone integration
