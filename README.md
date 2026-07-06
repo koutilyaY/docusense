@@ -9,6 +9,11 @@ The retriever is evaluated on **real contracts with real expert labels** (the
 CUAD dataset), and the reported number is the honest one, not a marketing
 figure. See [Evaluation](#evaluation).
 
+<p align="center">
+  <img src="assets/hero.png" width="620"><br>
+  <sub>Honest retrieval on real CUAD contracts — hit-rate@5 = 0.37. It's weak, and the repo explains why (general-purpose embeddings on dense legal text) instead of faking a number.</sub>
+</p>
+
 ---
 
 ## TL;DR — Run it locally
