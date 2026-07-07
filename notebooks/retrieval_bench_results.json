@@ -1,0 +1,110 @@
+{
+  "timestamp": "2026-07-06T23:23:04.715007",
+  "dataset": "CUAD (Contract Understanding Atticus Dataset)",
+  "split": "test",
+  "contracts_scored": 50,
+  "clause_questions_scored": 458,
+  "seed": 42,
+  "chunking": {
+    "chunk_size": 512,
+    "chunk_overlap": 64,
+    "clause_aware": false
+  },
+  "topn": 50,
+  "rerank_pool": 30,
+  "embedders": {
+    "baseline": "all-MiniLM-L6-v2",
+    "stronger": "BAAI/bge-small-en-v1.5"
+  },
+  "reranker": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+  "llm_involved": false,
+  "metric": "hit-rate@k (retriever recall of the gold clause span)",
+  "variant_labels": {
+    "baseline": "baseline (MiniLM dense)",
+    "hybrid": "+hybrid (BM25 + MiniLM, RRF)",
+    "reranker": "+reranker (hybrid + cross-encoder)",
+    "bge": "+BGE embeddings (dense)",
+    "bge_hybrid": "+BGE hybrid (BM25 + BGE, RRF)",
+    "bge_rerank": "+BGE hybrid + reranker"
+  },
+  "results": {
+    "baseline": {
+      "1": 0.1703,
+      "3": 0.3057,
+      "5": 0.369,
+      "10": 0.4585
+    },
+    "hybrid": {
+      "1": 0.214,
+      "3": 0.3144,
+      "5": 0.3755,
+      "10": 0.4672
+    },
+    "reranker": {
+      "1": 0.1965,
+      "3": 0.3079,
+      "5": 0.3799,
+      "10": 0.4389
+    },
+    "bge": {
+      "1": 0.2271,
+      "3": 0.3297,
+      "5": 0.3886,
+      "10": 0.4629
+    },
+    "bge_hybrid": {
+      "1": 0.2271,
+      "3": 0.321,
+      "5": 0.3755,
+      "10": 0.4825
+    },
+    "bge_rerank": {
+      "1": 0.1965,
+      "3": 0.31,
+      "5": 0.3755,
+      "10": 0.4432
+    }
+  },
+  "clause_aware_pass": {
+    "contracts_scored": 50,
+    "clause_questions_scored": 458,
+    "results": {
+      "baseline": {
+        "1": 0.1681,
+        "3": 0.2904,
+        "5": 0.3493,
+        "10": 0.452
+      },
+      "hybrid": {
+        "1": 0.2052,
+        "3": 0.2991,
+        "5": 0.3603,
+        "10": 0.4541
+      },
+      "reranker": {
+        "1": 0.19,
+        "3": 0.3122,
+        "5": 0.3799,
+        "10": 0.4279
+      },
+      "bge": {
+        "1": 0.2162,
+        "3": 0.3188,
+        "5": 0.3777,
+        "10": 0.452
+      },
+      "bge_hybrid": {
+        "1": 0.2183,
+        "3": 0.3079,
+        "5": 0.3712,
+        "10": 0.4738
+      },
+      "bge_rerank": {
+        "1": 0.1965,
+        "3": 0.3079,
+        "5": 0.369,
+        "10": 0.4389
+      }
+    }
+  }
+}

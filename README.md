@@ -6,12 +6,20 @@ risk flags on an uploaded contract. Everything runs on your machine — no API
 keys, no document text leaving the laptop, no per-query cost.
 
 The retriever is evaluated on **real contracts with real expert labels** (the
-CUAD dataset), and the reported number is the honest one, not a marketing
-figure. See [Evaluation](#evaluation).
+CUAD dataset), and the reported numbers are the honest ones, not marketing
+figures. The interesting part is not the absolute score — it is that the
+retrieval was **measurably improved and the improvement was proven** on the same
+gold-labeled eval. See [Evaluation](#evaluation).
+
+**Before → after (real CUAD, 458 gold clause questions, no LLM):** a stronger
+embedding model plus hybrid BM25 + dense fusion lifted **hit-rate@1 from 0.170
+to 0.227 (+34% relative)** and **hit-rate@10 from 0.459 to 0.483**. A
+cross-encoder reranker was tried and did *not* help here — that honest negative
+is in the table too.
 
 <p align="center">
-  <img src="assets/hero.png" width="620"><br>
-  <sub>Honest retrieval on real CUAD contracts — hit-rate@5 = 0.37. It's weak, and the repo explains why (general-purpose embeddings on dense legal text) instead of faking a number.</sub>
+  <img src="assets/retrieval_comparison.png" width="720"><br>
+  <sub>Baseline vs +hybrid vs +reranker vs stronger embeddings on 50 real CUAD contracts (458 gold clause questions, no LLM). BGE-small + hybrid RRF is the win; the reranker is not.</sub>
 </p>
 
 ---
@@ -118,7 +126,8 @@ What you get:
 | API | **FastAPI 0.111 + Uvicorn** | `POST /query`, `GET /health`, auto OpenAPI docs at `/docs` |
 | UI | **Streamlit 1.35** | Two-panel app: contract Q&A and risk scanner |
 | Ingestion | **PySpark 3.5 + Delta Lake 3.2** | Batch parse/clean of the contract corpus into Delta tables |
-| Evaluation | **RAGAS 0.1.9** | Faithfulness / answer-relevancy / context-precision scoring |
+| Retrieval eval | **CUAD gold spans + BM25 + cross-encoder** | Hit-rate@k on real expert labels; baseline vs hybrid vs reranker vs stronger embeddings, no LLM |
+| Generation eval | **RAGAS 0.1.9** | Faithfulness / answer-relevancy / context-precision (directional, LLM-based) |
 
 ---
 
@@ -155,7 +164,7 @@ retriever's recall of the correct clause. The script is
 `src/eval/retrieval_eval.py`; results are logged to
 `notebooks/retrieval_results.json`.
 
-**Result** (sample of 50 CUAD test contracts, 458 answerable clause questions,
+**Baseline** (sample of 50 CUAD test contracts, 458 answerable clause questions,
 `all-MiniLM-L6-v2`, seed 42):
 
 | Metric | Score |
@@ -165,14 +174,56 @@ retriever's recall of the correct clause. The script is
 | hit-rate@5 | 0.37 |
 | hit-rate@10 | 0.46 |
 
-**Be blunt about this: the number is modest.** A general-purpose MiniLM
-embedding with exact-span matching and no legal-domain tuning surfaces the right
-clause in the top-5 about 37% of the time and in the top-10 about 46%. That is a
+A general-purpose MiniLM embedding with exact-span matching and no legal-domain
+tuning surfaces the right clause in the top-5 about 37% of the time. That is a
 real, reproducible floor — same model and seed give the same result on any
-machine, no Ollama or API key needed. It replaces the "95.7%" headline in
-earlier versions of this repo, which was not backed by any committed artifact.
-Obvious improvements (a legal-domain embedding, clause-aware chunking, hybrid
-BM25 + dense, a reranker) are future work, not claims.
+machine. This is the honest starting point.
+
+#### Then I improved retrieval, and measured each change
+
+`src/eval/retrieval_bench.py` keeps that exact eval (same contracts, same
+chunking, same 458 gold spans) and adds real retrieval engineering on top,
+scoring each variant on the *identical* gold set. Still no LLM — dense
+retrieval, BM25, and a cross-encoder reranker only.
+
+| Variant | @1 | @3 | @5 | @10 |
+|---|---|---|---|---|
+| baseline (MiniLM dense) | 0.170 | 0.306 | 0.369 | 0.459 |
+| +hybrid (BM25 + MiniLM, RRF) | 0.214 | 0.314 | 0.376 | 0.467 |
+| +reranker (hybrid + cross-encoder) | 0.197 | 0.308 | 0.380 | 0.439 |
+| +BGE embeddings (dense) | 0.227 | **0.330** | **0.389** | 0.463 |
+| **+BGE hybrid (BM25 + BGE, RRF)** | **0.227** | 0.321 | 0.376 | **0.483** |
+| +BGE hybrid + reranker | 0.197 | 0.310 | 0.376 | 0.443 |
+
+**What actually helped, and by how much:**
+
+- **A stronger embedding model was the biggest, cheapest win.** Swapping
+  `all-MiniLM-L6-v2` for `BAAI/bge-small-en-v1.5` lifted hit-rate@1 from 0.170 to
+  0.227 — **+0.057 absolute, ~34% relative** — with no other change.
+- **Hybrid sparse + dense (BM25 fused with dense via Reciprocal Rank Fusion)
+  reliably helped the top of the ranking** (+0.044 @1 on MiniLM). BM25 catches
+  clause questions whose wording overlaps the contract, which dense retrieval
+  alone misses. The best single stack, **BGE + hybrid**, ties for best @1 and
+  gives the best deep recall (@10 = 0.483).
+- **The cross-encoder reranker did *not* help here — reported honestly.** It
+  moves @5 by a hair and actually *lowers* @10 (−0.020). Each contract is scored
+  against only its own chunks, so the candidate pool is small and there is little
+  to re-sort; and a general web-passage reranker (`ms-marco-MiniLM`) is not
+  legal-tuned. Reranking is often the headline win in RAG; on this per-contract,
+  single-span setup it is not, and the table shows that rather than hiding it.
+- **Clause-aware chunking was tried (`--clause-chunking`) and did not help**
+  either — CUAD gold spans are long and cross the chunk-size budget regardless
+  of where the cut lands. Also kept in the results as a measured negative.
+
+**Net, honestly:** retrieval improved from **hit-rate@1 0.170 → 0.227 (+34%
+relative)** and **@10 0.459 → 0.483**, driven by the embedding upgrade plus
+hybrid fusion — not the reranker. The ceiling is still modest: even the best
+variant surfaces the right clause in the top-5 under 40% of the time, because
+CUAD clauses are long, dense, and legally worded, and none of these models are
+fine-tuned on contract law. But the point stands — the retrieval was made
+*measurably better and the gain was proven*, and the technique that didn't work
+is reported alongside the ones that did. Full numbers, deltas, and the
+clause-chunking pass are in [BENCHMARKS.md](BENCHMARKS.md).
 
 Reproduce it:
 
@@ -180,7 +231,12 @@ Reproduce it:
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-eval.txt
 python data/cuad/download_cuad.py           # ~18 MB, cached under data/cuad/
-python src/eval/retrieval_eval.py --contracts 50
+python src/eval/retrieval_eval.py --contracts 50    # baseline only
+
+# the full comparison (hybrid, reranker, BGE, clause-aware) — still no LLM:
+pip install -r requirements-bench.txt
+python src/eval/retrieval_bench.py --contracts 50               # main table + chart
+python src/eval/retrieval_bench.py --contracts 50 --clause-chunking   # + chunking pass
 ```
 
 ### Secondary: RAGAS on the generation step (directional, LLM-based)
@@ -257,7 +313,8 @@ docusense/
 │   └── faiss_index/             # demo vector index (index.faiss / index.pkl)
 ├── src/
 │   ├── eval/
-│   │   ├── retrieval_eval.py     # REAL hit-rate@k on CUAD gold spans (no LLM)
+│   │   ├── retrieval_eval.py     # REAL hit-rate@k baseline on CUAD gold spans (no LLM)
+│   │   ├── retrieval_bench.py    # baseline vs hybrid vs reranker vs BGE + clause-aware (no LLM)
 │   │   └── cuad_to_jsonl.py      # convert real CUAD contracts into the RAG jsonl format
 │   ├── ingestion/
 │   │   ├── parser.py            # text extraction + metadata
@@ -277,8 +334,12 @@ docusense/
 │   ├── ragas_eval.py            # RAGAS generation eval (LLM-based, directional)
 │   ├── ragas_results.json       # logged RAGAS output
 │   └── retrieval_results.json   # logged REAL CUAD retrieval hit-rate@k
+│   └── retrieval_bench_results.json  # logged baseline vs hybrid/reranker/BGE comparison
+├── assets/
+│   └── retrieval_comparison.png # baseline vs hybrid vs reranker vs BGE, hit-rate@k
 ├── requirements.txt             # full app deps
-├── requirements-eval.txt        # minimal deps for the CUAD retrieval eval (no LLM)
+├── requirements-eval.txt        # minimal deps for the CUAD retrieval baseline (no LLM)
+├── requirements-bench.txt       # deps for the full retrieval comparison (BM25 + reranker, no LLM)
 ├── BENCHMARKS.md                # real vs directional numbers, spelled out
 └── README.md
 ```

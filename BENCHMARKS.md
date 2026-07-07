@@ -23,8 +23,11 @@ annotations, with no language model involved.
   per-contract FAISS index.
 - **Metric:** hit-rate@k (the retriever's recall of the gold clause span).
 
+### 1a. The baseline (the honest floor)
+
 Result from `src/eval/retrieval_eval.py --contracts 50` (sample: 50 contracts,
-458 answerable clause questions, seed 42):
+458 answerable clause questions, seed 42), general-purpose
+`all-MiniLM-L6-v2` dense retrieval:
 
 | Metric | Score |
 |---|---|
@@ -33,21 +36,93 @@ Result from `src/eval/retrieval_eval.py --contracts 50` (sample: 50 contracts,
 | hit-rate@5 | 0.37 |
 | hit-rate@10 | 0.46 |
 
-Logged in `notebooks/retrieval_results.json`.
-
-**Read this honestly.** These numbers are modest. With a general-purpose MiniLM
-embedding, exact-span matching, and no legal-domain fine-tuning, the retriever
-puts the right clause in the top-5 about 37% of the time and in the top-10 about
-46% of the time. That is a real, reproducible floor, not a marketing figure. It
-is the honest replacement for the "95.7%" headline that appeared in earlier
-versions of this repo, which was not backed by any committed artifact.
-
-The number is reproducible: same embedding model + same seed gives the same
+Logged in `notebooks/retrieval_results.json`. With a general-purpose MiniLM
+embedding, exact-span matching, and no legal-domain tuning, the retriever puts
+the right clause in the top-5 about 37% of the time. That is a real,
+reproducible floor, not a marketing figure — same model + seed gives the same
 result on any machine, no Ollama or API key required.
 
-Ways this could be improved (not yet done): a legal-domain embedding model,
-sentence-window or clause-aware chunking, hybrid BM25 + dense retrieval, or
-reranking. Those are listed as future work rather than claimed.
+### 1b. Retrieval engineering: what moved the number, measured
+
+`src/eval/retrieval_bench.py` takes that exact evaluation (same 50 contracts,
+same chunking, same 458 gold spans) and layers real retrieval techniques on top,
+scoring each on the *identical* gold set so the comparison is apples-to-apples.
+Still no LLM: dense retrieval, BM25, and a cross-encoder reranker only.
+
+Variants:
+
+- **baseline** — MiniLM dense (the floor above).
+- **+hybrid** — BM25 (sparse, `rank_bm25`) fused with MiniLM dense via
+  Reciprocal Rank Fusion (RRF, k=60).
+- **+reranker** — hybrid top-30, reranked by
+  `cross-encoder/ms-marco-MiniLM-L-6-v2`.
+- **+BGE** — swap MiniLM for `BAAI/bge-small-en-v1.5` (a stronger general
+  sentence-transformer) as the dense embedder.
+- **+BGE hybrid** — BM25 fused with BGE dense via RRF.
+- **+BGE hybrid + reranker** — the BGE hybrid candidates, cross-encoder reranked.
+
+Result (`python src/eval/retrieval_bench.py --contracts 50`, seed 42, 458 gold
+clause questions), best in each column in **bold**:
+
+| Variant | @1 | @3 | @5 | @10 |
+|---|---|---|---|---|
+| baseline (MiniLM dense) | 0.170 | 0.306 | 0.369 | 0.459 |
+| +hybrid (BM25 + MiniLM, RRF) | 0.214 | 0.314 | 0.376 | 0.467 |
+| +reranker (hybrid + cross-encoder) | 0.197 | 0.308 | 0.380 | 0.439 |
+| +BGE embeddings (dense) | 0.227 | **0.330** | **0.389** | 0.463 |
+| +BGE hybrid (BM25 + BGE, RRF) | **0.227** | 0.321 | 0.376 | **0.483** |
+| +BGE hybrid + reranker | 0.197 | 0.310 | 0.376 | 0.443 |
+
+Deltas vs baseline (absolute hit-rate):
+
+| Variant | @1 | @3 | @5 | @10 |
+|---|---|---|---|---|
+| +hybrid | +0.044 | +0.009 | +0.007 | +0.009 |
+| +reranker | +0.026 | +0.002 | +0.011 | **−0.020** |
+| +BGE | **+0.057** | +0.024 | +0.020 | +0.004 |
+| +BGE hybrid | +0.057 | +0.015 | +0.007 | +0.024 |
+| +BGE hybrid + reranker | +0.026 | +0.004 | +0.007 | −0.015 |
+
+Logged in `notebooks/retrieval_bench_results.json`; chart in
+`assets/retrieval_comparison.png`.
+
+**What actually moved the needle, blunt version:**
+
+- **Swapping the embedding model (MiniLM → BGE-small) was the single biggest
+  lever, and it was cheap.** hit-rate@1 went from 0.170 to 0.227 — a **+0.057
+  absolute, ~34% relative** jump — and @5 from 0.369 to 0.389. Same chunks, same
+  eval, just a better general-purpose embedder. This is the headline.
+- **Hybrid (BM25 + dense, RRF) reliably helps precision at the top**, adding
+  +0.044 @1 on MiniLM. Sparse lexical matching catches clause questions whose
+  wording overlaps the contract text, which dense embeddings alone miss.
+- **The best single stack is BGE + hybrid**: it ties for the best @1 (0.227) and
+  gives the best deep recall @10 (0.483, +0.024 over baseline).
+- **The cross-encoder reranker did *not* help here — an honest negative
+  result.** It nudges @5 by a hair but actually *lowers* @10 (−0.020 on MiniLM,
+  −0.015 on BGE). Two reasons: (1) each contract is scored against its own
+  chunks, so the fused candidate pool is small — there is little for a reranker
+  to re-sort; and (2) `ms-marco-MiniLM` is a general web-passage reranker, not
+  legal-tuned, so it does not model contract-clause relevance better than the
+  fused ranking already does. Reranking is often the big win in RAG; on this
+  per-contract, single-span setup it is not. We keep it in the table because
+  showing the technique that *didn't* help is the honest thing to do.
+
+Bottom line: the retriever improved from **hit-rate@1 0.170 → 0.227 (+34%
+relative)** and **@10 0.459 → 0.483**, driven by a stronger embedding model plus
+hybrid sparse+dense fusion — not by the reranker. Everything is reproducible
+with `pip install -r requirements-bench.txt` and one script, no LLM.
+
+### 1c. Clause-aware chunking (measured; did not help)
+
+`src/eval/retrieval_bench.py --clause-chunking` re-runs every variant with a
+clause-biased splitter (same 512/64 size budget, but breaking preferentially on
+`;`, sentence ends, and newlines before raw characters). The idea was that
+cutting on clause boundaries would keep gold spans intact inside a single chunk.
+It did not help — it came out flat to slightly worse (e.g. baseline @5 0.349 vs
+0.369 with the standard splitter). CUAD gold spans are often long and cross the
+512-char budget regardless of *where* the cut lands, so nudging the boundaries
+does not change how often a span sits wholly inside a retrieved chunk. Kept in
+the results JSON (`clause_aware_pass`) as a measured negative, not dropped.
 
 ---
 
