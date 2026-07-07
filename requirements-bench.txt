@@ -1,0 +1,15 @@
+# Dependencies for the RETRIEVAL BENCHMARK on CUAD (src/eval/retrieval_bench.py).
+# This is a superset of requirements-eval.txt: it adds sparse retrieval (BM25),
+# a cross-encoder reranker, a second embedding model, and the chart plotting.
+# Still NO LLM / Ollama / API key -- retrieval + rerank only, fully reproducible.
+#
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements-bench.txt
+#   python data/cuad/download_cuad.py
+#   python src/eval/retrieval_bench.py --contracts 50
+faiss-cpu>=1.8.0
+sentence-transformers>=2.7.0
+numpy>=1.26.0
+langchain-text-splitters>=0.2.0
+rank-bm25>=0.2.2
+matplotlib>=3.8.0
