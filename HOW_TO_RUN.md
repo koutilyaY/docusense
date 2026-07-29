@@ -23,7 +23,7 @@ and measures how well the retriever finds the correct clause against real gold
 labels. It does not need Ollama, a GPU, or any API key.
 
 ```bash
-cd /Users/koutilyayenumula/docusense
+cd ~/docusense
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-eval.txt
 
@@ -44,7 +44,7 @@ It prints hit-rate@k and writes `notebooks/retrieval_results.json`. See
 ### Step 1: Activate the virtual environment
 
 ```bash
-cd /Users/koutilyayenumula/docusense
+cd ~/docusense
 source venv/bin/activate
 ```
 
@@ -80,7 +80,7 @@ python src/rag/chunker.py
 ### Step 4: Start the FastAPI backend (new terminal tab)
 
 ```bash
-cd /Users/koutilyayenumula/docusense
+cd ~/docusense
 source venv/bin/activate
 uvicorn src.api.main:app --port 8000
 ```
@@ -91,7 +91,7 @@ API docs (Swagger UI): `http://localhost:8000/docs`
 ### Step 5: Start the Streamlit UI (new terminal tab)
 
 ```bash
-cd /Users/koutilyayenumula/docusense
+cd ~/docusense
 source venv/bin/activate
 streamlit run src/ui/app.py
 ```
@@ -126,7 +126,7 @@ curl http://localhost:8000/health
 
 | # | What | Command / Action |
 |---|------|-----------------|
-| 1 | Navigate to project | `cd /Users/koutilyayenumula/docusense` |
+| 1 | Navigate to project | `cd ~/docusense` |
 | 2 | Activate venv | `source venv/bin/activate` |
 | 3 | Start Ollama | `ollama serve` (new tab) |
 | 4 | (If needed) Rebuild index | `python src/ingestion/pipeline.py && python src/rag/chunker.py` |
